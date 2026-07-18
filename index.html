@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roteirizador — Rotas de Entrega</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#10141b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --asphalt: #10141b;
+    --asphalt-2: #1a212c;
+    --asphalt-3: #232c39;
+    --paper: #f4f1e8;
+    --ink: #1a1a1a;
+    --off-white: #e8e6df;
+    --off-white-dim: #9aa0ab;
+    --amber: #ffb020;
+    --amber-dim: #ffb02033;
+    --teal: #36c2ce;
+    --teal-dim: #36c2ce33;
+    --green: #3ecf6a;
+    --green-dim: #3ecf6a26;
+    --red: #ff5c5c;
+    --red-dim: #ff5c5c26;
+    --line-dash: repeating-linear-gradient(to bottom, var(--off-white-dim) 0 6px, transparent 6px 12px);
+    --radius: 3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{ background: var(--asphalt); color: var(--off-white); font-family:'IBM Plex Sans', sans-serif; min-height:100vh; }
+  .app{ display:flex; flex-direction:column; min-height:100vh; }
+
+  header.topstrip{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 24px; border-bottom:1px solid var(--asphalt-3);
+    background: var(--asphalt-2); position:relative; flex-wrap:wrap; gap:12px;
+  }
+  header.topstrip::after{
+    content:""; position:absolute; left:0; right:0; bottom:-1px; height:3px;
+    background: repeating-linear-gradient(90deg, var(--amber) 0 22px, transparent 22px 40px); opacity:0.6;
+  }
+  .brand{ display:flex; align-items:baseline; gap:10px; }
+  .brand h1{ font-family:'Oswald', sans-serif; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; font-size:21px; margin:0; }
+  .brand .tag{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--amber); letter-spacing:0.08em; border:1px solid var(--amber-dim); padding:2px 8px; border-radius:20px; }
+  .stats-strip{ display:flex; gap:20px; font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--off-white-dim); }
+  .stats-strip b{ color:var(--amber); font-size:15px; display:block; font-weight:600; }
+  .stats-strip .stat{ text-align:right; }
+  .stats-strip .stat.delivered b{ color: var(--green); }
+  .factor-input-wrap{ display:inline-flex; align-items:center; gap:2px; color:var(--amber); font-size:15px; font-weight:600; }
+  .factor-input-wrap input{ width:44px; background:transparent; border:none; border-bottom:1px dashed var(--amber-dim); color:var(--amber); font-family:'IBM Plex Mono', monospace; font-size:15px; font-weight:600; padding:0 0 1px; text-align:left; }
+  .factor-input-wrap input:focus{ outline:none; border-bottom-color:var(--amber); }
+  .factor-input-wrap input::-webkit-inner-spin-button{ opacity:0.5; }
+
+  main{ display:grid; grid-template-columns: 420px 1fr; flex:1; min-height:0; }
+  @media (max-width: 880px){
+    .app{ height:100dvh; }
+    main{ display:flex; flex-direction:column; flex:1; min-height:0; }
+    .panel{ flex:0 1 auto; max-height:66vh; border-right:none; border-bottom:1px solid var(--asphalt-3); }
+    #map{ flex:1; min-height:120px; height:auto; }
+  }
+
+  .manifest-drawer{ margin-top:18px; }
+  .manifest-toggle-row{ gap:10px; }
+  .manifest-toggle-row .print-btn{ padding:5px 9px; font-size:13px; flex:0 0 auto; }
+  #manifestContent{ padding-top:12px; }
+
+  .panel{ background: var(--asphalt-2); padding: 18px 20px 90px; overflow-y:auto; border-right: 1px solid var(--asphalt-3); }
+  .panel h2{ font-family:'Oswald', sans-serif; text-transform:uppercase; font-size:12.5px; letter-spacing:0.1em; color:var(--off-white-dim); margin:18px 0 10px; }
+  .panel h2:first-child{ margin-top:0; }
+
+  .manifest-head{ display:flex; align-items:center; justify-content:space-between; margin:18px 0 10px; }
+  .manifest-head h2{ margin:0; }
+  .print-btn{ padding:5px 10px; font-size:11.5px; }
+
+  /* ---------- collapsible setup drawer ---------- */
+  .drawer-toggle{
+    width:100%; display:flex; align-items:center; gap:10px;
+    background: var(--asphalt-3); border:1px solid var(--asphalt-3);
+    color: var(--off-white); padding:11px 14px; border-radius: var(--radius);
+    margin-bottom:0; text-align:left;
+  }
+  .drawer-toggle-label{ font-family:'Oswald', sans-serif; text-transform:uppercase; font-size:12px; letter-spacing:0.06em; font-weight:600; white-space:nowrap; }
+  .drawer-toggle-summary{ flex:1; font-size:11.5px; color:var(--off-white-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chevron{ font-size:12px; color: var(--amber); transition: transform 0.2s ease; }
+  .drawer-content{
+    max-height:2400px; overflow:hidden;
+    transition: max-height 0.3s ease, opacity 0.2s ease, margin 0.3s ease;
+    opacity:1;
+  }
+  .drawer-content.collapsed{ max-height:0; opacity:0; }
+  #drawerToggle.is-collapsed .chevron{ transform: rotate(-90deg); }
+
+  /* ---------- trip start / live clock ---------- */
+  .trip-row{ display:flex; align-items:center; gap:10px; margin:14px 0 6px; }
+  .btn-trip{
+    flex:1; background: var(--green); color:#04260f; font-weight:600;
+    padding:13px 14px; font-size:14.5px; border-radius: var(--radius);
+    font-family:'Oswald', sans-serif; text-transform:uppercase; letter-spacing:0.03em;
+  }
+  .btn-trip:hover:not(:disabled){ filter:brightness(1.08); }
+  .btn-trip:disabled{ background:var(--asphalt-3); color:var(--off-white-dim); }
+  .btn-trip.active{ background: var(--red); color:#2b0000; }
+  .trip-clock{
+    display:flex; align-items:center; gap:6px;
+    font-family:'IBM Plex Mono', monospace; font-size:15px; font-weight:600;
+    color: var(--green); background: var(--asphalt); border:1px solid var(--green-dim);
+    padding:10px 12px; border-radius: var(--radius); white-space:nowrap;
+  }
+  .trip-clock-dot{ width:7px; height:7px; border-radius:50%; background: var(--green); animation: pulse-dot 1.4s ease-in-out infinite; }
+  @keyframes pulse-dot{ 0%,100%{ opacity:1; } 50%{ opacity:0.25; } }
+
+  .origin-box{ border:1px solid var(--asphalt-3); border-radius: var(--radius); padding:12px; }
+  .origin-current{ display:none; background:var(--paper); color:var(--ink); border-radius:var(--radius); padding:10px 12px; margin-bottom:10px; font-size:12.5px; }
+  .origin-current.show{ display:block; }
+  .origin-current b{ display:block; font-size:13.5px; margin-bottom:2px; }
+  .origin-current .coord{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:#5a5648; }
+  .gps-btn{ width:100%; margin-bottom:8px; }
+  .gps-btn.live{ background: var(--green); color:#04260f; animation: pulse-btn 2s ease-in-out infinite; }
+  @keyframes pulse-btn{ 0%,100%{ box-shadow:0 0 0 0 var(--green-dim); } 50%{ box-shadow:0 0 0 6px transparent; } }
+  .or-divider{ display:flex; align-items:center; gap:8px; color:var(--off-white-dim); font-size:10.5px; margin:8px 0; font-family:'IBM Plex Mono', monospace; }
+  .or-divider::before, .or-divider::after{ content:""; flex:1; height:1px; background:var(--asphalt-3); }
+
+  form.add-stop{ display:flex; flex-direction:column; gap:8px; }
+  .field-row{ display:flex; gap:8px; }
+  input[type=text]{ width:100%; background: var(--asphalt); border:1px solid var(--asphalt-3); color: var(--off-white); padding:10px 12px; border-radius: var(--radius); font-family:'IBM Plex Sans', sans-serif; font-size:13.5px; }
+  input[type=text]:focus{ outline:2px solid var(--amber); outline-offset:1px; border-color:transparent; }
+  input::placeholder{ color:#5b6270; }
+  button{ font-family:'IBM Plex Sans', sans-serif; font-weight:500; border:none; border-radius: var(--radius); cursor:pointer; transition: transform 0.08s ease, filter 0.15s ease; }
+  button:active{ transform: translateY(1px); }
+  button:focus-visible{ outline:2px solid var(--amber); outline-offset:2px; }
+  button:disabled{ cursor:not-allowed; opacity:0.5; }
+
+  .btn-primary{ background: var(--amber); color: #1a1400; font-weight:600; padding:10px 14px; font-size:13.5px; }
+  .btn-primary:hover:not(:disabled){ filter:brightness(1.08); }
+  .btn-teal{ background: var(--teal); color:#04262a; font-weight:600; padding:10px 14px; font-size:13.5px; }
+  .btn-teal:hover:not(:disabled){ filter:brightness(1.08); }
+  .btn-ghost{ background:transparent; border:1px solid var(--asphalt-3); color: var(--off-white-dim); padding:9px 13px; font-size:13px; }
+  .btn-ghost:hover:not(:disabled){ border-color: var(--teal); color: var(--teal); }
+
+  .optimize-row{ display:flex; gap:8px; margin:16px 0 4px; }
+  .optimize-row .btn-primary{ flex:1; }
+
+  .hint{ font-size:11.5px; color: var(--off-white-dim); line-height:1.5; margin:6px 0 0; }
+  .hint.err{ color: var(--red); }
+  .hint.ok{ color: var(--green); }
+
+  ul.manifest{ list-style:none; margin:0; padding:0; position:relative; }
+  ul.manifest::before{ content:""; position:absolute; left:19px; top:8px; bottom:8px; width:1px; background: var(--line-dash); }
+  li.stop{ position:relative; display:flex; gap:12px; padding:10px 8px 10px 0; align-items:flex-start; }
+  .seq{ font-family:'Oswald', sans-serif; font-weight:700; font-size:15px; color: var(--asphalt); background: var(--paper); width:38px; height:38px; min-width:38px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:1; border: 2px solid var(--asphalt-2); line-height:1; }
+  .seq .letter{ font-size:9px; opacity:0.6; }
+  li.stop.pending .seq{ background: var(--asphalt-3); color:var(--off-white-dim); border-style:dashed; }
+  li.stop.error .seq{ background: var(--red); color:#2b0000; }
+  li.stop.delivered .seq{ background: var(--green); }
+  li.stop.failed .seq{ background: var(--red); }
+
+  .stop-card{ flex:1; background: var(--paper); color: var(--ink); border-radius: var(--radius); padding:10px 12px; min-width:0; }
+  .stop-card.delivered{ opacity:0.7; }
+  .stop-card .name{ font-weight:600; font-size:13.5px; margin:0 0 2px; display:flex; align-items:center; gap:6px; justify-content:space-between; }
+  .stop-card .addr{ font-size:12px; color:#5a5648; margin:0 0 4px; line-height:1.4; }
+  .stop-card .leg{ font-family:'IBM Plex Mono', monospace; font-size:11px; color: #7a6a30; display:flex; gap:10px; flex-wrap:wrap; }
+  .stop-card .leg.time-leg{ color:#1a7a3e; font-weight:600; margin-top:2px; }
+
+  .status-pill{ font-family:'IBM Plex Mono', monospace; font-size:9.5px; letter-spacing:0.05em; padding:2px 7px; border-radius:20px; text-transform:uppercase; font-weight:600; }
+  .status-pill.pendente{ background:#e2ddc8; color:#6b6140; }
+  .status-pill.entregue{ background:var(--green-dim); color:#1a7a3e; }
+  .status-pill.falhou{ background:var(--red-dim); color:#a12b2b; }
+
+  .stop-actions{ display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .mini-btn{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; border:1px solid #d8d3bf; background:#fff; color:#4a4638; padding:4px 8px; border-radius:2px; cursor:pointer; }
+  .mini-btn:hover{ border-color:#999; }
+  .mini-btn.deliver:hover{ border-color:var(--green); color:#1a7a3e; }
+  .mini-btn.fail:hover{ border-color:var(--red); color:#a12b2b; }
+  .icon-btn{ background:transparent; border:none; color:#8a8570; font-size:10.5px; cursor:pointer; padding:4px 6px; font-family:'IBM Plex Mono', monospace; }
+  .icon-btn:hover{ color: var(--red); }
+  .icon-btn.move:hover{ color: var(--teal); }
+
+  .empty-state{ padding:26px 10px; text-align:center; color: var(--off-white-dim); font-size:12.5px; border:1px dashed var(--asphalt-3); border-radius: var(--radius); margin-top:10px; }
+
+  #map{ width:100%; height:100%; min-height:340px; background:#0c0f14; }
+
+  .manual-coord{ margin-top:6px; display:none; gap:6px; }
+  .manual-coord.show{ display:flex; }
+
+  footer.legend{ position:sticky; bottom:0; padding:9px 22px; background: var(--asphalt-2); border-top:1px solid var(--asphalt-3); font-size:10px; color: var(--off-white-dim); font-family:'IBM Plex Mono', monospace; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; }
+
+  .divIcon-num{ font-family:'Oswald', sans-serif; font-weight:700; font-size:12px; color:#1a1400; background:var(--amber); width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #10141b; box-shadow:0 1px 4px rgba(0,0,0,0.5); }
+  .divIcon-num.delivered{ background:var(--green); }
+  .divIcon-num.failed{ background:var(--red); }
+  .divIcon-origin{ font-family:'Oswald', sans-serif; font-weight:700; font-size:13px; color:#04262a; background:var(--teal); width:28px; height:28px; border-radius:50% 50% 50% 0; transform:rotate(45deg); display:flex; align-items:center; justify-content:center; border:2px solid #10141b; box-shadow:0 1px 4px rgba(0,0,0,0.5); }
+  .divIcon-origin span{ transform:rotate(-45deg); }
+  .divIcon-origin.live{ background: var(--green); animation: pulse-origin 1.6s ease-in-out infinite; }
+  @keyframes pulse-origin{ 0%,100%{ box-shadow:0 0 0 0 rgba(62,207,106,0.55), 0 1px 4px rgba(0,0,0,0.5); } 50%{ box-shadow:0 0 0 9px rgba(62,207,106,0), 0 1px 4px rgba(0,0,0,0.5); } }  /* ---------- print manifest ---------- */
+  .print-only{ display:none; }
+  .print-only .p-header{ display:flex; align-items:baseline; justify-content:space-between; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:14px; }
+  .print-only .p-header h1{ font-family:'Oswald', sans-serif; text-transform:uppercase; letter-spacing:0.04em; font-size:22px; margin:0; }
+  .print-only .p-header span{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:#444; }
+  .print-only .p-origin{ font-size:12.5px; margin-bottom:14px; padding:8px 10px; border:1px solid #999; border-radius:3px; }
+  .print-only .p-origin b{ font-family:'Oswald', sans-serif; text-transform:uppercase; font-size:10.5px; letter-spacing:0.06em; display:block; margin-bottom:2px; color:#555; }
+  table.print-table{ width:100%; border-collapse:collapse; font-size:12px; }
+  table.print-table th{ font-family:'Oswald', sans-serif; text-transform:uppercase; font-size:10px; letter-spacing:0.05em; text-align:left; border-bottom:2px solid #000; padding:6px 6px; color:#333; }
+  table.print-table td{ border-bottom:1px solid #ccc; padding:8px 6px; vertical-align:top; }
+  table.print-table td.p-seq{ font-family:'Oswald', sans-serif; font-weight:700; font-size:14px; }
+  table.print-table td.p-status{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; white-space:nowrap; }
+  table.print-table td.p-sig{ min-width:120px; border-bottom:1px solid #000; }
+  table.print-table td.p-sig .p-time{ font-family:'IBM Plex Mono', monospace; font-weight:600; }
+  .print-only .p-summary{ display:flex; gap:24px; margin-top:16px; padding-top:10px; border-top:2px solid #000; font-family:'IBM Plex Mono', monospace; font-size:11.5px; }
+  .print-only .p-summary b{ display:block; font-size:14px; font-family:'IBM Plex Sans', sans-serif; }
+  .print-only .p-unresolved{ margin-top:14px; font-size:11px; color:#a00; }
+
+  @media print{
+    body *{ visibility:hidden; }
+    .print-only, .print-only *{ visibility:visible; }
+    .print-only{ display:block; position:absolute; top:0; left:0; width:100%; padding:24px; background:#fff; color:#000; }
+    @page{ margin:14mm; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topstrip">
+    <div class="brand">
+      <h1>Roteirizador</h1>
+      <span class="tag">ENTREGAS &amp; VISITAS</span>
+    </div>
+    <div class="stats-strip">
+      <div class="stat">PARADAS<br><b id="statStops">0</b></div>
+      <div class="stat delivered">ENTREGUES<br><b id="statDelivered">0</b></div>
+      <div class="stat">DIST. TOTAL<br><b id="statDist">—</b></div>
+      <div class="stat">TEMPO EST.<br><b id="statTime">—</b></div>
+      <div class="stat factor-stat">
+        FATOR TRÂNSITO<br>
+        <span class="factor-input-wrap">×<input type="number" id="trafficFactorInput" value="1.4" min="1" max="3" step="0.1"></span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <button type="button" class="drawer-toggle" id="drawerToggle">
+        <span class="drawer-toggle-label">Configurar rota</span>
+        <span class="drawer-toggle-summary" id="drawerSummary">defina a partida e os destinos</span>
+        <span class="chevron" id="drawerChevron">▾</span>
+      </button>
+
+      <div class="drawer-content" id="drawerContent">
+        <h2>Ponto de partida</h2>
+        <div class="origin-box">
+          <div class="origin-current" id="originCurrent">
+            <b id="originLabel">—</b>
+            <span class="coord" id="originCoord"></span>
+          </div>
+          <button type="button" class="btn-teal gps-btn" id="gpsBtn">📍 Ativar rastreamento ao vivo (GPS)</button>
+          <p class="hint">Enquanto ativo, sua posição atualiza no mapa e a rota recalcula conforme você se move.</p>
+          <div class="or-divider">ou informe manualmente</div>
+          <div class="field-row">
+            <input type="text" id="originCep" placeholder="CEP" inputmode="numeric" maxlength="9">
+            <button type="button" class="btn-ghost" id="originCepBtn" style="white-space:nowrap;">Buscar</button>
+          </div>
+          <input type="text" id="originAddress" placeholder="Endereço de partida" style="margin-top:8px;">
+          <button type="button" class="btn-ghost" id="originSetBtn" style="margin-top:8px; width:100%;">Definir como partida</button>
+          <p class="hint" id="originHint"></p>
+        </div>
+
+        <h2>Adicionar destino</h2>
+        <form class="add-stop" id="addForm">
+          <input type="text" id="inputName" placeholder="Nome (ex: Cliente A, encomenda #123)" required>
+          <div class="field-row">
+            <input type="text" id="inputCep" placeholder="CEP" inputmode="numeric" maxlength="9">
+            <button type="button" class="btn-ghost" id="cepBtn" style="white-space:nowrap;">Buscar</button>
+          </div>
+          <input type="text" id="inputAddress" placeholder="Endereço (rua, número, cidade)" required>
+          <button type="submit" class="btn-primary" id="addBtn">+ Adicionar destino</button>
+          <p class="hint" id="geoHint">Busque pelo CEP para preencher o endereço, ou digite direto.</p>
+          <div class="manual-coord" id="manualCoordRow">
+            <input type="text" id="manualCoord" placeholder="lat, lon (ex: -23.55, -46.63)">
+            <button type="button" class="btn-ghost" id="manualCoordBtn">Usar coordenadas</button>
+          </div>
+        </form>
+
+        <div class="optimize-row">
+          <button class="btn-primary" id="optimizeBtn" disabled>Otimizar rota</button>
+          <button class="btn-ghost" id="resetBtn">Nova rota</button>
+        </div>
+      </div>
+
+      <div class="trip-row">
+        <button class="btn-trip" id="tripBtn" disabled>▶ Iniciar entregas</button>
+        <div class="trip-clock" id="tripClock" style="display:none;">
+          <span class="trip-clock-dot"></span>
+          <span id="tripClockValue">0:00:00</span>
+        </div>
+      </div>
+
+      <div class="manifest-drawer">
+        <div class="drawer-toggle manifest-toggle-row" id="manifestToggle">
+          <span class="drawer-toggle-label">Manifesto</span>
+          <span class="drawer-toggle-summary" id="manifestSummary"></span>
+          <button class="btn-ghost print-btn" id="printBtn" title="Imprimir manifesto">🖨</button>
+          <span class="chevron" id="manifestChevron">▾</span>
+        </div>
+        <div class="drawer-content" id="manifestContent">
+          <ul class="manifest" id="manifestList"></ul>
+          <div class="empty-state" id="emptyState">Defina a partida e adicione destinos acima.</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="map"></section>
+  </main>
+
+  <footer class="legend">
+    <span>◆ partida · ● destino · geocodificação OpenStreetMap + ViaCEP</span>
+    <span id="footerNote">rota salva neste navegador</span>
+  </footer>
+</div>
+
+<div class="print-only" id="printManifest"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  const STORAGE_KEY = "roteirizador_state_v1";
+
+  /* ---------- state ---------- */
+  let origin = null; // {lat, lon, label, coordLabel}
+  let stops = []; // {id, letter, name, address, lat, lon, status:'pending'|'ok'|'error', delivery:'pendente'|'entregue'|'falhou'}
+  let nextId = 1;
+  let optimized = false;
+  let trafficFactor = 1.4; // multiplier applied to free-flow driving time to approximate real traffic
+  let lastRawTotalMin = 0; // last computed duration BEFORE the traffic factor is applied
+  let tripActive = false;
+  let tripStartTime = null; // epoch ms
+  let drawerCollapsed = false;
+
+  /* ---------- persistence ---------- */
+  function saveState(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ origin, stops, nextId, optimized, trafficFactor, tripActive, tripStartTime }));
+    }catch(e){ /* storage unavailable (e.g. sandboxed preview) — app still works, just won't persist */ }
+  }
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return;
+      const data = JSON.parse(raw);
+      origin = data.origin || null;
+      stops = data.stops || [];
+      nextId = data.nextId || 1;
+      optimized = data.optimized || false;
+      if(typeof data.trafficFactor === 'number' && data.trafficFactor > 0) trafficFactor = data.trafficFactor;
+      tripActive = data.tripActive || false;
+      tripStartTime = data.tripStartTime || null;
+    }catch(e){ /* ignore */ }
+  }
+
+  function formatMinutes(mins){
+    mins = Math.round(mins);
+    return mins > 0 ? (mins >= 60 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'min' : mins + ' min') : '—';
+  }
+
+  function refreshTimeDisplay(){
+    document.getElementById('statTime').textContent = formatMinutes(lastRawTotalMin * trafficFactor);
+  }
+
+  /* ---------- collapsible setup drawer ---------- */
+  function setDrawerCollapsed(collapsed){
+    drawerCollapsed = collapsed;
+    document.getElementById('drawerContent').classList.toggle('collapsed', collapsed);
+    document.getElementById('drawerToggle').classList.toggle('is-collapsed', collapsed);
+    updateDrawerSummary();
+  }
+
+  function updateDrawerSummary(){
+    const parts = [];
+    parts.push(origin ? 'partida definida' : 'partida pendente');
+    parts.push(stops.length + (stops.length === 1 ? ' destino' : ' destinos'));
+    document.getElementById('drawerSummary').textContent = parts.join(' · ');
+  }
+
+  /* ---------- collapsible manifest drawer ---------- */
+  let manifestCollapsed = false;
+
+  function setManifestCollapsed(collapsed){
+    manifestCollapsed = collapsed;
+    document.getElementById('manifestContent').classList.toggle('collapsed', collapsed);
+    document.getElementById('manifestToggle').classList.toggle('is-collapsed', collapsed);
+    updateManifestSummary();
+  }
+
+  function updateManifestSummary(){
+    const deliveredCount = stops.filter(s => s.delivery === 'entregue').length;
+    document.getElementById('manifestSummary').textContent = stops.length
+      ? deliveredCount + '/' + stops.length + ' entregues'
+      : 'sem paradas';
+  }
+
+  /* ---------- trip timer ---------- */
+  let tripTimerInterval = null;
+
+  function formatStopwatch(ms){
+    const totalSec = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  function tickTripClock(){
+    if(!tripActive || !tripStartTime) return;
+    document.getElementById('tripClockValue').textContent = formatStopwatch(Date.now() - tripStartTime);
+  }
+
+  function startTrip(){
+    if(!origin || !stops.some(s => s.status === 'ok')) return;
+    tripActive = true;
+    tripStartTime = Date.now();
+    saveState();
+    setDrawerCollapsed(true);
+    updateTripUI();
+    tickTripClock();
+    tripTimerInterval = setInterval(tickTripClock, 1000);
+  }
+
+  function stopTrip(){
+    tripActive = false;
+    saveState();
+    if(tripTimerInterval){ clearInterval(tripTimerInterval); tripTimerInterval = null; }
+    updateTripUI();
+  }
+
+  function updateTripUI(){
+    const btn = document.getElementById('tripBtn');
+    const clock = document.getElementById('tripClock');
+    const canStart = !!origin && stops.some(s => s.status === 'ok');
+    if(tripActive){
+      btn.textContent = '⏹ Finalizar rota';
+      btn.classList.add('active');
+      btn.disabled = false;
+      clock.style.display = 'flex';
+    } else {
+      btn.textContent = '▶ Iniciar entregas';
+      btn.classList.remove('active');
+      btn.disabled = !canStart;
+      clock.style.display = 'none';
+    }
+  }
+
+  /* ---------- map setup ---------- */
+  const BRAZIL_BOUNDS = L.latLngBounds([-35.5, -75.5], [6.5, -32]);
+  const map = L.map('map', {
+    zoomControl: true,
+    maxBounds: BRAZIL_BOUNDS.pad(0.15),
+    maxBoundsViscosity: 0.9,
+    minZoom: 4
+  }).fitBounds(BRAZIL_BOUNDS);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    maxZoom: 19
+  }).addTo(map);
+
+  let markersLayer = L.layerGroup().addTo(map);
+  let routeLineLayers = [];
+  let originMarker = null;
+
+  function ensureOriginMarker(lat, lon){
+    const isLive = liveWatchId !== null;
+    const icon = L.divIcon({ className:'', html:'<div class="divIcon-origin' + (isLive ? ' live' : '') + '"><span>◆</span></div>', iconSize:[28,28], iconAnchor:[14,20] });
+    if(originMarker){
+      originMarker.setLatLng([lat, lon]);
+      originMarker.setIcon(icon);
+    } else {
+      originMarker = L.marker([lat, lon], { icon }).addTo(map);
+    }
+    originMarker.bindPopup('<b>Partida</b><br>' + (origin ? origin.label : ''));
+  }
+
+  /* ---------- route line rendering (per-leg, current leg highlighted) ---------- */
+  function currentLegIndex(geocodedOrdered){
+    return geocodedOrdered.findIndex(s => s.delivery === 'pendente');
+  }
+
+  function clearRouteLines(){
+    routeLineLayers.forEach(l => map.removeLayer(l));
+    routeLineLayers = [];
+  }
+
+  function drawLegLines(legLatlngsArray, geocodedOrdered, dashed){
+    clearRouteLines();
+    const curIdx = currentLegIndex(geocodedOrdered);
+    let currentLine = null;
+    legLatlngsArray.forEach((latlngs, i) => {
+      const isCurrent = i === curIdx;
+      const style = isCurrent
+        ? { color: '#ffb020', weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }
+        : { color: '#5b6270', weight: 3, opacity: 0.45, lineCap: 'round', lineJoin: 'round' };
+      if(dashed) style.dashArray = '1,8';
+      const line = L.polyline(latlngs, style).addTo(map);
+      routeLineLayers.push(line);
+      if(isCurrent) currentLine = line;
+    });
+    if(currentLine) currentLine.bringToFront();
+  }
+
+  /* ---------- road routing (OSRM) ---------- */
+  let roadRouteTimer = null;
+  let roadRouteToken = 0;
+  let cachedRoadRouteKey = null;
+  let cachedRoadRoute = null;
+  let cachedRoadRouteFailedKey = null;
+
+  function routeKeyFor(points){
+    return points.map(p => p.lat.toFixed(5) + ',' + p.lon.toFixed(5)).join('|');
+  }
+
+  async function fetchLeg(a, b){
+    const coordStr = a.lon + ',' + a.lat + ';' + b.lon + ',' + b.lat;
+    const url = 'https://router.project-osrm.org/route/v1/driving/' + coordStr + '?overview=full&geometries=geojson&steps=false';
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('leg routing failed');
+    const data = await res.json();
+    if(data.code !== 'Ok' || !data.routes || !data.routes.length) throw new Error('no leg route');
+    const route = data.routes[0];
+    return {
+      latlngs: route.geometry.coordinates.map(c => [c[1], c[0]]),
+      distanceKm: route.distance / 1000,
+      durationMin: route.duration / 60
+    };
+  }
+
+  async function fetchRoadRouteLegs(points){
+    const pairs = [];
+    for(let i = 0; i < points.length - 1; i++) pairs.push([points[i], points[i + 1]]);
+    const legs = await Promise.all(pairs.map(([a, b]) => fetchLeg(a, b)));
+    const totalKm = legs.reduce((sum, l) => sum + l.distanceKm, 0);
+    const totalMin = legs.reduce((sum, l) => sum + l.durationMin, 0);
+    return { legs, totalKm, totalMin };
+  }
+
+  function scheduleRoadRouteUpdate(){
+    clearTimeout(roadRouteTimer);
+    roadRouteTimer = setTimeout(updateRoadRoute, 350);
+  }
+
+  async function updateRoadRoute(){
+    const geocodedOrdered = stops.filter(s => s.status === 'ok');
+    if(!origin || geocodedOrdered.length < 1) return;
+    const points = [origin, ...geocodedOrdered];
+    const key = routeKeyFor(points);
+
+    if(key === cachedRoadRouteKey && cachedRoadRoute){
+      applyRoadRoute(cachedRoadRoute, geocodedOrdered);
+      return;
+    }
+    if(key === cachedRoadRouteFailedKey){
+      applyRoadRouteFallback();
+      return;
+    }
+
+    const myToken = ++roadRouteToken;
+    try{
+      const result = await fetchRoadRouteLegs(points);
+      if(myToken !== roadRouteToken) return;
+      cachedRoadRouteKey = key;
+      cachedRoadRoute = result;
+      applyRoadRoute(result, geocodedOrdered);
+    }catch(e){
+      if(myToken !== roadRouteToken) return;
+      cachedRoadRouteFailedKey = key;
+      applyRoadRouteFallback();
+    }
+  }
+
+  function applyRoadRoute(result, geocodedOrdered){
+    drawLegLines(result.legs.map(l => l.latlngs), geocodedOrdered, false);
+    document.getElementById('statDist').textContent = result.totalKm.toFixed(1) + ' km';
+    lastRawTotalMin = result.totalMin;
+    refreshTimeDisplay();
+    geocodedOrdered.forEach((s, idx) => {
+      const leg = result.legs[idx];
+      if(!leg) return;
+      const el = document.getElementById('legdist-' + s.id);
+      if(el) el.textContent = '+' + leg.distanceKm.toFixed(1) + ' km';
+    });
+    document.getElementById('footerNote').textContent = (optimized ? 'ordem otimizada' : 'ordem de inserção — clique "Otimizar rota"') + ' · caminho por vias (OSRM) · salvo neste navegador';
+  }
+
+  function applyRoadRouteFallback(){
+    document.getElementById('footerNote').textContent = (optimized ? 'ordem otimizada' : 'ordem de inserção — clique "Otimizar rota"') + ' · roteamento por vias indisponível agora, mostrando linha reta · salvo neste navegador';
+  }
+
+  /* ---------- helpers ---------- */
+  function haversineKm(a, b){
+    const R = 6371;
+    const dLat = (b.lat - a.lat) * Math.PI/180;
+    const dLon = (b.lon - a.lon) * Math.PI/180;
+    const lat1 = a.lat * Math.PI/180;
+    const lat2 = b.lat * Math.PI/180;
+    const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+
+  async function geocode(address){
+    const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=" + encodeURIComponent(address);
+    const res = await fetch(url, { headers: { "Accept": "application/json" } });
+    if(!res.ok) throw new Error("geocode failed");
+    const data = await res.json();
+    if(!data || !data.length) throw new Error("no results");
+    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+  }
+
+  async function reverseGeocode(lat, lon){
+    try{
+      const url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon;
+      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      const data = await res.json();
+      return data && data.display_name ? data.display_name : "Localização atual";
+    }catch(e){
+      return "Localização atual";
+    }
+  }
+
+  async function lookupCep(cep){
+    const digits = cep.replace(/\D/g, '');
+    if(digits.length !== 8) throw new Error("CEP inválido");
+    const res = await fetch("https://viacep.com.br/ws/" + digits + "/json/");
+    if(!res.ok) throw new Error("CEP não encontrado");
+    const data = await res.json();
+    if(data.erro) throw new Error("CEP não encontrado");
+    const parts = [data.logradouro, data.bairro, data.localidade + '/' + data.uf].filter(Boolean);
+    return parts.join(', ');
+  }
+
+  function letterFor(index){
+    return index < 26 ? String.fromCharCode(65 + index) : 'D' + (index + 1);
+  }
+
+  function setHint(id, msg, kind){
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.className = 'hint' + (kind === 'err' ? ' err' : kind === 'ok' ? ' ok' : '');
+  }
+
+  function escapeHtml(str){
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /* ---------- print manifest ---------- */
+  function buildPrintManifest(){
+    const geocodedOrdered = stops.filter(s => s.status === 'ok');
+    const unresolved = stops.filter(s => s.status !== 'ok');
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const deliveredCount = stops.filter(s => s.delivery === 'entregue').length;
+
+    let rows = '';
+    geocodedOrdered.forEach((s, idx) => {
+      const sigCell = s.deliveredAt
+        ? '<span class="p-time">' + formatClockTime(s.deliveredAt) + '</span>'
+        : '';
+      rows += '<tr>' +
+        '<td class="p-seq">' + (idx + 1) + '</td>' +
+        '<td>' + escapeHtml(s.letter) + '</td>' +
+        '<td><strong>' + escapeHtml(s.name) + '</strong><br>' + escapeHtml(s.address) + '</td>' +
+        '<td class="p-status">' + escapeHtml(s.delivery) + '</td>' +
+        '<td class="p-sig">' + sigCell + '</td>' +
+        '</tr>';
+    });
+
+    let unresolvedHtml = '';
+    if(unresolved.length){
+      unresolvedHtml = '<p class="p-unresolved">⚠ ' + unresolved.length + ' parada(s) sem localização confirmada, não incluída(s) na sequência: ' +
+        unresolved.map(s => escapeHtml(s.name)).join(', ') + '</p>';
+    }
+
+    const durationStr = tripStartTime
+      ? formatStopwatch((tripActive ? Date.now() : (stops.reduce((max, s) => s.deliveredAt ? Math.max(max, s.deliveredAt) : max, tripStartTime))) - tripStartTime)
+      : '—';
+
+    document.getElementById('printManifest').innerHTML =
+      '<div class="p-header"><h1>Manifesto de Rota</h1><span>Gerado em ' + dateStr + '</span></div>' +
+      '<div class="p-origin"><b>Partida</b>' + (origin ? escapeHtml(origin.label) + ' · ' + origin.lat.toFixed(5) + ', ' + origin.lon.toFixed(5) : 'Não definida') +
+        (tripStartTime ? ' · início às ' + formatClockTime(tripStartTime) : '') + '</div>' +
+      '<table class="print-table"><thead><tr><th>Nº</th><th>Cód.</th><th>Destino</th><th>Status</th><th>Hora / Assinatura</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      unresolvedHtml +
+      '<div class="p-summary">' +
+        '<span>Paradas<br><b>' + stops.length + '</b></span>' +
+        '<span>Entregues<br><b>' + deliveredCount + '/' + stops.length + '</b></span>' +
+        '<span>Distância total<br><b>' + document.getElementById('statDist').textContent + '</b></span>' +
+        '<span>Duração da rota<br><b>' + durationStr + '</b></span>' +
+      '</div>';
+  }
+
+  /* ---------- origin actions (live tracking) ---------- */
+  let liveWatchId = null;
+  let lastRecalcOrigin = null;
+
+  function toggleLiveTracking(){
+    if(liveWatchId !== null){
+      stopLiveTracking(true);
+    } else {
+      startLiveTracking();
+    }
+  }
+
+  function startLiveTracking(){
+    if(!navigator.geolocation){
+      setHint('originHint', 'Seu navegador não suporta geolocalização. Use o campo manual.', 'err');
+      return;
+    }
+    const btn = document.getElementById('gpsBtn');
+    btn.disabled = true;
+    btn.textContent = 'Obtendo localização…';
+    liveWatchId = navigator.geolocation.watchPosition(onLivePosition, onLiveError, {
+      enableHighAccuracy: true, maximumAge: 4000, timeout: 15000
+    });
+  }
+
+  function stopLiveTracking(keepOrigin){
+    if(liveWatchId !== null){
+      navigator.geolocation.clearWatch(liveWatchId);
+      liveWatchId = null;
+    }
+    const btn = document.getElementById('gpsBtn');
+    btn.classList.remove('live');
+    btn.disabled = false;
+    btn.textContent = '📍 Ativar rastreamento ao vivo (GPS)';
+    if(keepOrigin && origin){
+      setHint('originHint', 'Rastreamento pausado. A partida ficou fixa na última posição.', 'ok');
+    }
+    render();
+  }
+
+  function onLivePosition(pos){
+    const lat = pos.coords.latitude, lon = pos.coords.longitude;
+    const btn = document.getElementById('gpsBtn');
+    btn.disabled = false;
+    btn.classList.add('live');
+    btn.textContent = '🟢 Ao vivo — toque para parar';
+
+    const isFirstFix = !origin || origin.source !== 'gps-live';
+    origin = { lat, lon, label: 'Minha localização (ao vivo)', source: 'gps-live' };
+    optimized = optimized && !isFirstFix;
+
+    document.getElementById('originCurrent').classList.add('show');
+    document.getElementById('originLabel').textContent = '🟢 Minha localização (ao vivo)';
+    document.getElementById('originCoord').textContent = lat.toFixed(4) + ', ' + lon.toFixed(4);
+    ensureOriginMarker(lat, lon);
+    saveState();
+
+    const movedFar = !lastRecalcOrigin || haversineKm(lastRecalcOrigin, { lat, lon }) > 0.04;
+    if(isFirstFix || movedFar){
+      lastRecalcOrigin = { lat, lon };
+      setHint('originHint', 'Acompanhando sua localização em tempo real — a rota recalcula conforme você se move.', 'ok');
+      render();
+    }
+  }
+
+  function onLiveError(){
+    setHint('originHint', 'Não foi possível obter sua localização (permissão negada ou indisponível). Use o campo manual.', 'err');
+    stopLiveTracking(false);
+  }
+
+  async function setOriginManual(){
+    const addr = document.getElementById('originAddress').value.trim();
+    if(!addr){ setHint('originHint', 'Digite um endereço ou busque pelo CEP.', 'err'); return; }
+    if(liveWatchId !== null){ stopLiveTracking(false); }
+    const btn = document.getElementById('originSetBtn');
+    btn.disabled = true;
+    btn.textContent = 'Localizando…';
+    try{
+      const coords = await geocode(addr);
+      origin = { lat: coords.lat, lon: coords.lon, label: addr, source: 'manual' };
+      optimized = false;
+      setHint('originHint', 'Partida definida com sucesso.', 'ok');
+    }catch(e){
+      setHint('originHint', 'Endereço não localizado. Confira o CEP/endereço.', 'err');
+    }
+    btn.disabled = false;
+    btn.textContent = 'Definir como partida';
+    render();
+  }
+
+  /* ---------- destination actions ---------- */
+  async function addStop(name, address){
+    const stop = { id: nextId++, letter: letterFor(stops.length), name, address, lat: null, lon: null, status: 'pending', delivery: 'pendente', deliveredAt: null };
+    stops.push(stop);
+    optimized = false;
+    render();
+    try{
+      const coords = await geocode(address);
+      stop.lat = coords.lat; stop.lon = coords.lon; stop.status = 'ok';
+      setHint('geoHint', 'Destino ' + stop.letter + ' geocodificado com sucesso.', 'ok');
+    }catch(e){
+      stop.status = 'error';
+      setHint('geoHint', 'Endereço não localizado. Informe as coordenadas manualmente abaixo.', 'err');
+      const row = document.getElementById('manualCoordRow');
+      row.classList.add('show');
+      row.dataset.forId = stop.id;
+    }
+    render();
+  }
+
+  function removeStop(id){
+    stops = stops.filter(s => s.id !== id);
+    stops.forEach((s, i) => s.letter = letterFor(i));
+    optimized = false;
+    render();
+  }
+
+  function moveStop(id, dir){
+    const i = stops.findIndex(s => s.id === id);
+    const j = i + dir;
+    if(j < 0 || j >= stops.length) return;
+    [stops[i], stops[j]] = [stops[j], stops[i]];
+    render();
+  }
+
+  function setDelivery(id, status){
+    const s = stops.find(s => s.id === id);
+    if(!s) return;
+    s.delivery = status;
+    s.deliveredAt = (status === 'entregue' || status === 'falhou') ? Date.now() : null;
+    render();
+  }
+
+  function formatClockTime(ms){
+    return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function formatElapsedSince(ms, sinceMs){
+    if(!sinceMs || ms < sinceMs) return '';
+    const mins = Math.round((ms - sinceMs) / 60000);
+    return mins < 60 ? '+' + mins + 'min' : '+' + Math.floor(mins / 60) + 'h' + String(mins % 60).padStart(2, '0');
+  }
+
+  function optimizeRoute(){
+    if(!origin){ setHint('geoHint', 'Defina o ponto de partida primeiro.', 'err'); return; }
+    const geocoded = stops.filter(s => s.status === 'ok');
+    if(geocoded.length < 1) return;
+    const ordered = [];
+    const remaining = geocoded.slice();
+    let current = origin;
+    while(remaining.length){
+      let bestIdx = 0, bestDist = Infinity;
+      remaining.forEach((s, idx) => {
+        const d = haversineKm(current, s);
+        if(d < bestDist){ bestDist = d; bestIdx = idx; }
+      });
+      current = remaining.splice(bestIdx, 1)[0];
+      ordered.push(current);
+    }
+    const nonGeo = stops.filter(s => s.status !== 'ok');
+    stops = ordered.concat(nonGeo);
+    optimized = true;
+    render();
+  }
+
+  /* ---------- rendering ---------- */
+  function render(){
+    saveState();
+    updateDrawerSummary();
+    updateManifestSummary();
+    updateTripUI();
+
+    const originCurrent = document.getElementById('originCurrent');
+    if(origin){
+      originCurrent.classList.add('show');
+      document.getElementById('originLabel').textContent = (origin.source === 'gps' ? '📍 ' : '') + origin.label;
+      document.getElementById('originCoord').textContent = origin.lat.toFixed(4) + ', ' + origin.lon.toFixed(4);
+    } else {
+      originCurrent.classList.remove('show');
+    }
+
+    const list = document.getElementById('manifestList');
+    const empty = document.getElementById('emptyState');
+    list.innerHTML = '';
+    empty.style.display = (stops.length || origin) ? 'none' : 'block';
+
+    const geocodedOrdered = stops.filter(s => s.status === 'ok');
+    let totalKm = 0;
+    const legDistances = {};
+    let prev = origin;
+    geocodedOrdered.forEach((s) => {
+      if(prev){
+        const d = haversineKm(prev, s);
+        totalKm += d;
+        legDistances[s.id] = d;
+      }
+      prev = s;
+    });
+
+    stops.forEach((s) => {
+      const li = document.createElement('li');
+      li.className = 'stop' + (s.status === 'pending' ? ' pending' : '') + (s.status === 'error' ? ' error' : '') + (s.delivery === 'entregue' ? ' delivered' : '') + (s.delivery === 'falhou' ? ' failed' : '');
+
+      const seq = document.createElement('div');
+      seq.className = 'seq';
+      if(s.status === 'pending'){ seq.innerHTML = '···'; }
+      else if(s.status === 'error'){ seq.innerHTML = '!'; }
+      else {
+        const idx = geocodedOrdered.indexOf(s);
+        seq.innerHTML = '<span>' + (idx + 1) + '</span><span class="letter">' + s.letter + '</span>';
+      }
+      li.appendChild(seq);
+
+      const card = document.createElement('div');
+      card.className = 'stop-card' + (s.delivery === 'entregue' ? ' delivered' : '');
+
+      const nameRow = document.createElement('p');
+      nameRow.className = 'name';
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = s.name;
+      nameRow.appendChild(nameSpan);
+      const pill = document.createElement('span');
+      pill.className = 'status-pill ' + s.delivery;
+      pill.textContent = s.delivery;
+      nameRow.appendChild(pill);
+      card.appendChild(nameRow);
+
+      const addr = document.createElement('p');
+      addr.className = 'addr';
+      addr.textContent = s.address;
+      card.appendChild(addr);
+
+      if(s.status === 'ok'){
+        const leg = document.createElement('p');
+        leg.className = 'leg';
+        const coordSpan = document.createElement('span');
+        coordSpan.textContent = s.lat.toFixed(4) + ', ' + s.lon.toFixed(4);
+        leg.appendChild(coordSpan);
+        if(legDistances[s.id] !== undefined){
+          const distSpan = document.createElement('span');
+          distSpan.id = 'legdist-' + s.id;
+          distSpan.textContent = '+' + legDistances[s.id].toFixed(1) + ' km';
+          leg.appendChild(distSpan);
+        }
+        card.appendChild(leg);
+      } else if(s.status === 'error'){
+        const err = document.createElement('p');
+        err.className = 'leg';
+        err.style.color = '#b03030';
+        err.textContent = 'endereço não localizado';
+        card.appendChild(err);
+      } else {
+        const pend = document.createElement('p');
+        pend.className = 'leg';
+        pend.textContent = 'localizando…';
+        card.appendChild(pend);
+      }
+
+      if(s.deliveredAt){
+        const timeRow = document.createElement('p');
+        timeRow.className = 'leg time-leg';
+        const clockSpan = document.createElement('span');
+        clockSpan.textContent = '🕐 ' + formatClockTime(s.deliveredAt);
+        timeRow.appendChild(clockSpan);
+        const elapsed = formatElapsedSince(s.deliveredAt, tripStartTime);
+        if(elapsed){
+          const elapsedSpan = document.createElement('span');
+          elapsedSpan.textContent = elapsed + ' desde o início';
+          timeRow.appendChild(elapsedSpan);
+        }
+        card.appendChild(timeRow);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'stop-actions';
+      if(s.status === 'ok'){
+        const deliverBtn = document.createElement('button');
+        deliverBtn.className = 'mini-btn deliver';
+        deliverBtn.textContent = '✓ Entregue';
+        deliverBtn.onclick = () => setDelivery(s.id, 'entregue');
+        const failBtn = document.createElement('button');
+        failBtn.className = 'mini-btn fail';
+        failBtn.textContent = '✕ Falhou';
+        failBtn.onclick = () => setDelivery(s.id, 'falhou');
+        actions.appendChild(deliverBtn);
+        actions.appendChild(failBtn);
+        if(s.delivery !== 'pendente'){
+          const resetBtn = document.createElement('button');
+          resetBtn.className = 'mini-btn';
+          resetBtn.textContent = '↺ Reabrir';
+          resetBtn.onclick = () => setDelivery(s.id, 'pendente');
+          actions.appendChild(resetBtn);
+        }
+      }
+      const upBtn = document.createElement('button');
+      upBtn.className = 'icon-btn move';
+      upBtn.textContent = '↑';
+      upBtn.title = 'Mover para cima';
+      upBtn.onclick = () => moveStop(s.id, -1);
+      const downBtn = document.createElement('button');
+      downBtn.className = 'icon-btn move';
+      downBtn.textContent = '↓';
+      downBtn.title = 'Mover para baixo';
+      downBtn.onclick = () => moveStop(s.id, 1);
+      const delBtn = document.createElement('button');
+      delBtn.className = 'icon-btn';
+      delBtn.textContent = '✕';
+      delBtn.title = 'Remover';
+      delBtn.onclick = () => removeStop(s.id);
+      actions.appendChild(upBtn);
+      actions.appendChild(downBtn);
+      actions.appendChild(delBtn);
+      card.appendChild(actions);
+
+      li.appendChild(card);
+      list.appendChild(li);
+    });
+
+    const deliveredCount = stops.filter(s => s.delivery === 'entregue').length;
+    document.getElementById('statStops').textContent = stops.length;
+    document.getElementById('statDelivered').textContent = deliveredCount + '/' + stops.length;
+    document.getElementById('statDist').textContent = totalKm > 0 ? totalKm.toFixed(1) + ' km' : '—';
+    lastRawTotalMin = totalKm > 0 ? (totalKm / 28) * 60 : 0;
+    refreshTimeDisplay();
+    document.getElementById('footerNote').textContent = (optimized ? 'ordem otimizada' : 'ordem de inserção — clique "Otimizar rota"') + ' · rota salva neste navegador';
+
+    document.getElementById('optimizeBtn').disabled = !origin || geocodedOrdered.length < 1;
+
+    renderMap(geocodedOrdered);
+    scheduleRoadRouteUpdate();
+  }
+
+  function renderMap(geocodedOrdered){
+    markersLayer.clearLayers();
+
+    const points = [];
+    if(origin){
+      ensureOriginMarker(origin.lat, origin.lon);
+      points.push(origin);
+    } else if(originMarker){
+      map.removeLayer(originMarker);
+      originMarker = null;
+    }
+    geocodedOrdered.forEach((s, idx) => {
+      const cls = s.delivery === 'entregue' ? ' delivered' : s.delivery === 'falhou' ? ' failed' : '';
+      const icon = L.divIcon({ className:'', html:'<div class="divIcon-num' + cls + '">' + (idx + 1) + '</div>', iconSize:[24,24], iconAnchor:[12,12] });
+      L.marker([s.lat, s.lon], { icon }).bindPopup('<b>' + s.letter + ' · ' + s.name + '</b><br>' + s.address + '<br>Status: ' + s.delivery).addTo(markersLayer);
+      points.push(s);
+    });
+
+    if(points.length > 1){
+      const legLatlngsArray = [];
+      for(let i = 0; i < points.length - 1; i++){
+        legLatlngsArray.push([[points[i].lat, points[i].lon], [points[i + 1].lat, points[i + 1].lon]]);
+      }
+      drawLegLines(legLatlngsArray, geocodedOrdered, true);
+    } else {
+      clearRouteLines();
+    }
+    if(points.length){
+      const bounds = L.latLngBounds(points.map(p => [p.lat, p.lon]));
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+    }
+  }
+
+  /* ---------- events ---------- */
+  document.getElementById('gpsBtn').addEventListener('click', toggleLiveTracking);
+  document.getElementById('originSetBtn').addEventListener('click', setOriginManual);
+
+  document.getElementById('originCepBtn').addEventListener('click', async () => {
+    const cepEl = document.getElementById('originCep');
+    const btn = document.getElementById('originCepBtn');
+    const cep = cepEl.value.trim();
+    if(!cep){ setHint('originHint', 'Digite um CEP para buscar.', 'err'); return; }
+    btn.disabled = true; btn.textContent = '…';
+    try{
+      const address = await lookupCep(cep);
+      document.getElementById('originAddress').value = address;
+      setHint('originHint', 'Endereço preenchido. Confira e clique em "Definir como partida".', 'ok');
+    }catch(e){
+      setHint('originHint', 'CEP não encontrado.', 'err');
+    }
+    btn.disabled = false; btn.textContent = 'Buscar';
+  });
+
+  document.getElementById('addForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nameEl = document.getElementById('inputName');
+    const addrEl = document.getElementById('inputAddress');
+    const name = nameEl.value.trim();
+    const address = addrEl.value.trim();
+    if(!name || !address) return;
+    const btn = document.getElementById('addBtn');
+    btn.disabled = true; btn.textContent = 'Localizando…';
+    await addStop(name, address);
+    btn.disabled = false; btn.textContent = '+ Adicionar destino';
+    nameEl.value = ''; addrEl.value = ''; document.getElementById('inputCep').value = '';
+    nameEl.focus();
+  });
+
+  document.getElementById('cepBtn').addEventListener('click', async () => {
+    const cepEl = document.getElementById('inputCep');
+    const btn = document.getElementById('cepBtn');
+    const cep = cepEl.value.trim();
+    if(!cep){ setHint('geoHint', 'Digite um CEP para buscar.', 'err'); return; }
+    btn.disabled = true; btn.textContent = '…';
+    try{
+      const address = await lookupCep(cep);
+      document.getElementById('inputAddress').value = address;
+      setHint('geoHint', 'Endereço preenchido pelo CEP. Complete com o número, se precisar.', 'ok');
+      document.getElementById('inputAddress').focus();
+    }catch(e){
+      setHint('geoHint', 'CEP não encontrado. Digite o endereço manualmente.', 'err');
+    }
+    btn.disabled = false; btn.textContent = 'Buscar';
+  });
+
+  document.getElementById('manualCoordBtn').addEventListener('click', () => {
+    const row = document.getElementById('manualCoordRow');
+    const id = parseInt(row.dataset.forId, 10);
+    const raw = document.getElementById('manualCoord').value.trim();
+    const parts = raw.split(',').map(v => parseFloat(v.trim()));
+    if(parts.length !== 2 || parts.some(isNaN)){
+      setHint('geoHint', 'Formato inválido. Use: lat, lon (ex: -23.55, -46.63)', 'err');
+      return;
+    }
+    const stop = stops.find(s => s.id === id);
+    if(stop){
+      stop.lat = parts[0]; stop.lon = parts[1]; stop.status = 'ok';
+      setHint('geoHint', 'Coordenadas aplicadas manualmente.', 'ok');
+      row.classList.remove('show');
+      document.getElementById('manualCoord').value = '';
+      render();
+    }
+  });
+
+  document.getElementById('optimizeBtn').addEventListener('click', optimizeRoute);
+
+  document.getElementById('printBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if(!stops.length && !origin){
+      setHint('geoHint', 'Adicione a partida e destinos antes de imprimir.', 'err');
+      return;
+    }
+    buildPrintManifest();
+    setTimeout(() => window.print(), 50);
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    if(!stops.length && !origin) return;
+    if(!confirm('Iniciar uma nova rota? Isso apaga a partida e os destinos atuais deste navegador.')) return;
+    if(liveWatchId !== null){ navigator.geolocation.clearWatch(liveWatchId); liveWatchId = null; }
+    document.getElementById('gpsBtn').classList.remove('live');
+    document.getElementById('gpsBtn').textContent = '📍 Ativar rastreamento ao vivo (GPS)';
+    if(tripTimerInterval){ clearInterval(tripTimerInterval); tripTimerInterval = null; }
+    origin = null; stops = []; optimized = false; lastRecalcOrigin = null;
+    tripActive = false; tripStartTime = null;
+    cachedRoadRouteKey = null; cachedRoadRoute = null; cachedRoadRouteFailedKey = null;
+    setDrawerCollapsed(false);
+    setManifestCollapsed(false);
+    render();
+  });
+
+  document.getElementById('drawerToggle').addEventListener('click', () => {
+    setDrawerCollapsed(!drawerCollapsed);
+  });
+
+  document.getElementById('manifestToggle').addEventListener('click', () => {
+    setManifestCollapsed(!manifestCollapsed);
+  });
+
+  document.getElementById('tripBtn').addEventListener('click', () => {
+    if(tripActive){
+      if(confirm('Finalizar a rota atual? O cronômetro para, mas os dados continuam salvos.')) stopTrip();
+    } else {
+      startTrip();
+    }
+  });
+
+  document.getElementById('trafficFactorInput').addEventListener('change', (e) => {
+    let v = parseFloat(e.target.value);
+    if(isNaN(v) || v < 1) v = 1;
+    if(v > 3) v = 3;
+    trafficFactor = v;
+    e.target.value = v.toFixed(1);
+    saveState();
+    refreshTimeDisplay();
+  });
+
+  loadState();
+  document.getElementById('trafficFactorInput').value = trafficFactor.toFixed(1);
+  if(tripActive && tripStartTime){
+    setDrawerCollapsed(true);
+    tickTripClock();
+    tripTimerInterval = setInterval(tickTripClock, 1000);
+  }
+  render();
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').catch(() => { /* offline caching unavailable, app still works online */ });
+    });
+  }
+})();
+</script>
+</body>
+</html>

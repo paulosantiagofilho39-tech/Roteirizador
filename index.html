@@ -60,11 +60,85 @@
   .factor-input-wrap input::-webkit-inner-spin-button{ opacity:0.5; }
 
   main{ display:grid; grid-template-columns: 420px 1fr; flex:1; min-height:0; }
+
+  .sidebar-toggle-btn{ display:none; }
+  .sidebar-backdrop{ display:none; }
+  .panel-backdrop{ display:none; }
+  .fab-add-btn{ display:none; }
+  .panel-close-btn{ display:none; }
+  .panel-drag-handle{ display:none; }
+
   @media (max-width: 880px){
-    .app{ height:100dvh; }
-    main{ display:flex; flex-direction:column; flex:1; min-height:0; }
-    .panel{ flex:0 1 auto; max-height:66vh; border-right:none; border-bottom:1px solid var(--asphalt-3); }
-    #map{ flex:1; min-height:120px; height:auto; }
+    .app{ height:100dvh; overflow:hidden; }
+    main{ display:flex; flex-direction:column; flex:1; min-height:0; position:relative; }
+    #map{ flex:1; min-height:0; height:100%; }
+    footer.legend{ display:none; }
+
+    .panel{
+      position:fixed; left:0; right:0; bottom:0;
+      max-height:82vh; border-right:none; border-top:1px solid var(--asphalt-3);
+      border-radius:18px 18px 0 0;
+      transform: translateY(105%);
+      transition: transform 0.3s ease;
+      z-index:260; box-shadow:0 -6px 28px rgba(0,0,0,0.55);
+      padding-top:26px;
+    }
+    .panel.open{ transform: translateY(0); }
+
+    .panel-drag-handle{
+      display:block; position:absolute; top:10px; left:50%; transform:translateX(-50%);
+      width:40px; height:4px; border-radius:4px; background: var(--asphalt-3);
+    }
+    .panel-close-btn{
+      display:flex; align-items:center; justify-content:center;
+      position:absolute; top:12px; right:14px; z-index:2;
+      width:30px; height:30px; border-radius:50%;
+      background: var(--asphalt-3); border:none; color:var(--off-white-dim); font-size:14px;
+    }
+
+    .fab-add-btn{
+      display:flex; align-items:center; gap:8px; justify-content:center;
+      position:fixed; left:50%; bottom:20px; transform:translateX(-50%);
+      z-index:255; padding:13px 22px; border-radius:30px;
+      background: var(--amber); color:#1a1400; font-weight:600; font-size:14px;
+      font-family:'Oswald', sans-serif; text-transform:uppercase; letter-spacing:0.03em;
+      box-shadow:0 4px 18px rgba(0,0,0,0.5); border:none;
+    }
+    .fab-add-btn.hide{ transform:translateX(-50%) translateY(120px); }
+
+    .panel-backdrop{
+      display:block; position:fixed; inset:0; z-index:250;
+      background:rgba(0,0,0,0.55); opacity:0; pointer-events:none;
+      transition: opacity 0.25s ease;
+    }
+    .panel-backdrop.show{ opacity:1; pointer-events:auto; }
+
+    header.topstrip{
+      position:fixed; top:0; left:0; height:100dvh; width:280px; max-width:84vw;
+      flex-direction:column; align-items:flex-start; justify-content:flex-start;
+      overflow-y:auto; transform:translateX(-100%);
+      transition: transform 0.28s ease;
+      border-bottom:none; border-right:1px solid var(--asphalt-3);
+      z-index:300; padding-top:56px;
+    }
+    header.topstrip.open{ transform:translateX(0); }
+    header.topstrip::after{ display:none; }
+    .stats-strip{ flex-direction:column; align-items:flex-start; gap:16px; margin-top:18px; width:100%; }
+    .stats-strip .stat{ text-align:left; }
+
+    .sidebar-toggle-btn{
+      display:flex; align-items:center; justify-content:center;
+      position:fixed; top:14px; left:14px; z-index:310;
+      width:42px; height:42px; border-radius:50%;
+      background: var(--asphalt-2); border:1px solid var(--asphalt-3); color:var(--amber);
+      font-size:18px; box-shadow:0 2px 10px rgba(0,0,0,0.5);
+    }
+    .sidebar-backdrop{
+      display:block; position:fixed; inset:0; z-index:290;
+      background:rgba(0,0,0,0.55); opacity:0; pointer-events:none;
+      transition: opacity 0.25s ease;
+    }
+    .sidebar-backdrop.show{ opacity:1; pointer-events:auto; }
   }
 
   .manifest-drawer{ margin-top:18px; }
@@ -225,8 +299,12 @@
 </style>
 </head>
 <body>
+<button type="button" class="sidebar-toggle-btn" id="sidebarToggle" title="Abrir menu">☰</button>
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+<button type="button" class="fab-add-btn" id="fabAddBtn">📍 Adicionar local</button>
+<div class="panel-backdrop" id="panelBackdrop"></div>
 <div class="app">
-  <header class="topstrip">
+  <header class="topstrip" id="topHeader">
     <div class="brand">
       <h1>Roteirizador</h1>
       <span class="tag">ENTREGAS &amp; VISITAS</span>
@@ -244,7 +322,9 @@
   </header>
 
   <main>
-    <section class="panel">
+    <section class="panel" id="mainPanel">
+      <div class="panel-drag-handle"></div>
+      <button type="button" class="panel-close-btn" id="panelCloseBtn">✕</button>
       <button type="button" class="drawer-toggle" id="drawerToggle">
         <span class="drawer-toggle-label">Configurar rota</span>
         <span class="drawer-toggle-summary" id="drawerSummary">defina a partida e os destinos</span>
@@ -330,7 +410,7 @@
 (function(){
   "use strict";
 
-  const STORAGE_KEY = "roteirizador_state_v1";
+  const STORAGE_KEY = "roteirizador_state_v2";
 
   /* ---------- state ---------- */
   let origin = null; // {lat, lon, label, coordLabel}
@@ -427,6 +507,7 @@
     tripStartTime = Date.now();
     saveState();
     setDrawerCollapsed(true);
+    if(typeof closeMainPanel === 'function') closeMainPanel();
     updateTripUI();
     tickTripClock();
     tripTimerInterval = setInterval(tickTripClock, 1000);
@@ -1174,6 +1255,34 @@
     setManifestCollapsed(!manifestCollapsed);
   });
 
+  const topHeader = document.getElementById('topHeader');
+  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+  function openSidebar(){ topHeader.classList.add('open'); sidebarBackdrop.classList.add('show'); }
+  function closeSidebar(){ topHeader.classList.remove('open'); sidebarBackdrop.classList.remove('show'); }
+  document.getElementById('sidebarToggle').addEventListener('click', () => {
+    topHeader.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  sidebarBackdrop.addEventListener('click', closeSidebar);
+
+  const mainPanel = document.getElementById('mainPanel');
+  const panelBackdrop = document.getElementById('panelBackdrop');
+  const fabAddBtn = document.getElementById('fabAddBtn');
+  function openMainPanel(){
+    mainPanel.classList.add('open');
+    panelBackdrop.classList.add('show');
+    fabAddBtn.classList.add('hide');
+  }
+  function closeMainPanel(){
+    mainPanel.classList.remove('open');
+    panelBackdrop.classList.remove('show');
+    fabAddBtn.classList.remove('hide');
+  }
+  fabAddBtn.addEventListener('click', () => {
+    mainPanel.classList.contains('open') ? closeMainPanel() : openMainPanel();
+  });
+  panelBackdrop.addEventListener('click', closeMainPanel);
+  document.getElementById('panelCloseBtn').addEventListener('click', closeMainPanel);
+
   document.getElementById('tripBtn').addEventListener('click', () => {
     if(tripActive){
       if(confirm('Finalizar a rota atual? O cronômetro para, mas os dados continuam salvos.')) stopTrip();
@@ -1194,8 +1303,8 @@
 
   loadState();
   document.getElementById('trafficFactorInput').value = trafficFactor.toFixed(1);
+  setDrawerCollapsed(true);
   if(tripActive && tripStartTime){
-    setDrawerCollapsed(true);
     tickTripClock();
     tripTimerInterval = setInterval(tickTripClock, 1000);
   }
